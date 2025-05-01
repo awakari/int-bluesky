@@ -1,0 +1,154 @@
+# Default values for int-bluesky.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/awakari/int-bluesky
+  pullPolicy: Always
+  tag: "latest"
+imagePullSecrets:
+  - name: github-registry
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 50051
+  http:
+    port: 8080
+  callback:
+    port: 8081
+  metrics:
+    port: 9090
+
+ingress:
+  enabled: false
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+  hosts:
+    - host: int-bluesky.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+ingressHttpV1:
+  enabled: true
+  hosts:
+    - host: bluesky.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - secretName: secret-activitypub-tls-server
+      hosts:
+        - activitypub.local
+
+resources:
+  requests:
+    cpu: 1m
+    memory: 16Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationValue: 100m
+  targetMemoryUtilizationValue: 64Mi
+
+priority:
+  class: "awk-major"
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        preference:
+          matchExpressions:
+            - key: spot
+              operator: In
+              values:
+                - "true"
+
+api:
+  bluesky:
+    app:
+      id: "awakari"
+      password:
+        secret:
+          name: "int-bluesky"
+          keyRef: "app-password"
+  event:
+    typ:
+      interestsUpdated: "interests-updated"
+  interests:
+    uri: "http://interests-api:8080/v1"
+    detailsUriPrefix: "https://awakari.com/sub-details.html?id="
+  reader:
+    uri: "http://reader:8080/v1"
+    uriEvtBase: "https://awakari.com/pub-msg.html?id="
+    callback:
+      protocol: "http"
+      path: "/v1/callback"
+  prometheus:
+    protocol: "http"
+    host: "prometheus-server"
+    port: "80"
+  token:
+    internal:
+      key: "api-token-internal"
+      name: "auth"
+cert:
+  acme:
+    email: "awakari@awakari.com"
+    server: "https://acme-staging-v02.api.letsencrypt.org/directory"
+  issuer:
+    name: letsencrypt-staging
+log:
+  # https://pkg.go.dev/golang.org/x/exp/slog#Level
+  level: -4
+queue:
+  uri: "queue:50051"
+  interestsCreated:
+    batchSize: 1
+    name: "int-bluesky"
+    subj: "interests-created"
+  interestsUpdated:
+    batchSize: 1
+    name: "int-bluesky"
+    subj: "interests-updated"

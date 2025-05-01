@@ -1,0 +1,17 @@
+# prod
+cert:
+  acme:
+    server: "https://acme-v02.api.letsencrypt.org/directory"
+  issuer:
+    name: letsencrypt
+
+ingressHttpV1:
+  hosts:
+    - host: bluesky.awakari.com
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - secretName: secret-int-bluesky-tls-server
+      hosts:
+        - bluesky.awakari.com

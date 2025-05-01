@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "int-bluesky.fullname" . }}
+  labels:
+    {{- include "int-bluesky.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "int-bluesky.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "int-bluesky.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "int-bluesky.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      priorityClassName: "{{ .Values.priority.class }}"
+      containers:
+        - name: {{ .Chart.Name }}
+          env:
+            - name: API_PORT
+              value: "{{ .Values.service.port }}"
+            - name: API_HTTP_PORT
+              value: "{{ .Values.service.http.port }}"
+            {{- range .Values.ingressHttpV1.hosts }}
+            - name: API_HTTP_HOST
+              value: "{{ .host }}"
+            {{- end }}
+            - name: API_METRICS_PORT
+              value: "{{ .Values.service.metrics.port }}"
+            - name: API_EVENT_TYPE
+              value: "{{ .Values.api.event.type }}"
+            - name: API_INTERESTS_URI
+              value: "{{ .Values.api.interests.uri }}"
+            - name: API_INTERESTS_DETAILS_URI_PREFIX
+              value: "{{ .Values.api.interests.detailsUriPrefix }}"
+            - name: API_TOKEN_INTERNAL
+              valueFrom:
+                secretKeyRef:
+                  key: "{{ .Values.api.token.internal.key }}"
+                  name: "{{ .Values.api.token.internal.name }}"
+            - name: API_READER_URI
+              value: "{{ .Values.api.reader.uri }}"
+            - name: API_READER_URI_EVT_BASE
+              value: "{{ .Values.api.reader.uriEvtBase }}"
+            - name: API_READER_CALLBACK_PROTOCOL
+              value: "{{ .Values.api.reader.callback.protocol }}"
+            - name: API_READER_CALLBACK_HOST
+              value: "{{ include "int-bluesky.fullname" . }}"
+            - name: API_READER_CALLBACK_PORT
+              value: "{{ .Values.service.callback.port }}"
+            - name: API_READER_CALLBACK_PATH
+              value: "{{ .Values.api.reader.callback.path }}"
+            - name: API_PROMETHEUS_URI
+              value: "{{ .Values.api.prometheus.protocol}}://{{ .Values.api.prometheus.host }}:{{ .Values.api.prometheus.port }}"
+            - name: LOG_LEVEL
+              value: "{{ .Values.log.level }}"
+            - name: API_EVENT_TYPE_INTERESTS_UPDATED
+              value: "{{ .Values.api.event.typ.interestsUpdated }}"
+            - name: API_QUEUE_URI
+              value: "{{ .Values.queue.uri }}"
+            - name: API_QUEUE_INTERESTS_CREATED_BATCH_SIZE
+              value: "{{ .Values.queue.interestsCreated.batchSize }}"
+            - name: API_QUEUE_INTERESTS_CREATED_NAME
+              value: "{{ .Values.queue.interestsCreated.name }}"
+            - name: API_QUEUE_INTERESTS_CREATED_SUBJ
+              value: "{{ .Values.queue.interestsCreated.subj }}"
+            - name: API_QUEUE_INTERESTS_UPDATED_BATCH_SIZE
+              value: "{{ .Values.queue.interestsUpdated.batchSize }}"
+            - name: API_QUEUE_INTERESTS_UPDATED_NAME
+              value: "{{ .Values.queue.interestsUpdated.name }}"
+            - name: API_QUEUE_INTERESTS_UPDATED_SUBJ
+              value: "{{ .Values.queue.interestsUpdated.subj }}"
+            - name: API_BLUESKY_APP_ID
+              value: "{{ .Values.api.bluesky.app.id }}"
+            - name: API_BLUESKY_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: "{{ .Values.api.bluesky.app.password.secret.keyRef }}"
+                  name: "{{ .Values.api.bluesky.app.password.secret.name }}"
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: http
+              containerPort: {{ .Values.service.http.port }}
+              protocol: TCP
+            - name: callback
+              containerPort: {{ .Values.service.callback.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.metrics.port }}
+              protocol: TCP
+          livenessProbe:
+            grpc:
+              port: {{ .Values.service.port }}
+            timeoutSeconds: 10
+          readinessProbe:
+            grpc:
+              port: {{ .Values.service.port }}
+            timeoutSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "int-bluesky.name" . }}
