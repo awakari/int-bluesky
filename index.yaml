@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  int-bluesky:
+  - apiVersion: v2
+    appVersion: latest
+    created: "2025-05-01T20:30:16.73162594Z"
+    description: A Helm chart for Awakari int-bluesky
+    digest: 85d3e3153c95200b9ee7dc1b4d3e8f4a44c15307e92d7e21cc824611cef573d4
+    name: int-bluesky
+    type: application
+    urls:
+    - int-bluesky-0.0.0.tgz
+    version: 0.0.0
+generated: "2025-05-01T20:30:16.729214783Z"
