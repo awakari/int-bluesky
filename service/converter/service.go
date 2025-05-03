@@ -194,7 +194,7 @@ func (s service) PostToEvent(ctx context.Context, src *pb.CloudEvent) (dst *pb.C
 			Id:          src.Id,
 			Source:      src.Source,
 			SpecVersion: src.SpecVersion,
-			Type:        src.Type,
+			Type:        "com_awakari_bluesky_v1",
 			Attributes:  make(map[string]*pb.CloudEventAttributeValue),
 			Data:        &pb.CloudEvent_TextData{},
 		}
