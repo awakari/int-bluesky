@@ -82,7 +82,7 @@ resources:
 autoscaling:
   enabled: true
   minReplicas: 1
-  maxReplicas: 100
+  maxReplicas: 1
   targetCPUUtilizationValue: 100m
   targetMemoryUtilizationValue: 64Mi
 
