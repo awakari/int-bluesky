@@ -3,11 +3,11 @@ package bluesky
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bytedance/sonic"
 	"io"
 	"net/http"
-	"net/http/httptest"
 )
 
 type Service interface {
@@ -55,7 +55,7 @@ func (s service) Login(ctx context.Context, id, password string) (did, token str
 		Identifier: id,
 		Password:   password,
 	})
-	req := httptest.NewRequestWithContext(
+	req, _ := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		"https://bsky.social/xrpc/com.atproto.server.createSession",
@@ -68,15 +68,18 @@ func (s service) Login(ctx context.Context, id, password string) (did, token str
 	var respData []byte
 	if err == nil {
 		defer resp.Body.Close()
-		respData, err = io.ReadAll(io.LimitReader(req.Body, limitBodyLen))
+		respData, err = io.ReadAll(io.LimitReader(resp.Body, limitBodyLen))
 	}
 	var lr loginResp
 	if err == nil {
 		err = sonic.Unmarshal(respData, &lr)
 	}
-	if err == nil {
+	switch err {
+	case nil:
 		did = lr.Did
 		token = lr.AccessJwt
+	default:
+		err = fmt.Errorf("response: %d, %+v, %s", resp.StatusCode, resp.Header, string(respData))
 	}
 	return
 }
@@ -87,7 +90,7 @@ func (s service) CreatePost(ctx context.Context, post *bsky.FeedPost, did, token
 		Collection: coll,
 		Record:     post,
 	})
-	req := httptest.NewRequestWithContext(
+	req, _ := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		"https://bsky.social/xrpc/com.atproto.repo.createRecord",

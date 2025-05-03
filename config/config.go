@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/kelseyhightower/envconfig"
+	"time"
 )
 
 type Config struct {
@@ -14,7 +15,7 @@ type Config struct {
 type ApiConfig struct {
 	Bluesky struct {
 		App struct {
-			Id       string `required:"true" envconfig:"API_BLUESKY_APP_ID" default:"awakari"`
+			Id       string `required:"true" envconfig:"API_BLUESKY_APP_ID" default:"bluesky.awakari.com"`
 			Password string `required:"true" envconfig:"API_BLUESKY_APP_PASSWORD"`
 		}
 	}
@@ -30,12 +31,18 @@ type ApiConfig struct {
 		Uri              string `envconfig:"API_INTERESTS_URI" required:"true" default:"http://interests-api:8080/v1"`
 		DetailsUriPrefix string `envconfig:"API_INTERESTS_DETAILS_URI_PREFIX" required:"true" default:"https://awakari.com/sub-details.html?id="`
 	}
+	Writer struct {
+		Backoff time.Duration `envconfig:"API_WRITER_BACKOFF" default:"10s" required:"true"`
+		Timeout time.Duration `envconfig:"API_WRITER_TIMEOUT" default:"10s" required:"true"`
+		Uri     string        `envconfig:"API_WRITER_URI" default:"http://pub:8080/v1" required:"true"`
+	}
 	Reader     ReaderConfig
 	Prometheus PrometheusConfig
 	Queue      QueueConfig
 	Token      struct {
 		Internal string `envconfig:"API_TOKEN_INTERNAL" required:"true"`
 	}
+	GroupId string `envconfig:"API_GROUP_ID" default:"default" required:"true"`
 }
 
 type PrometheusConfig struct {
@@ -68,6 +75,11 @@ type QueueConfig struct {
 		BatchSize uint32 `envconfig:"API_QUEUE_INTERESTS_UPDATED_BATCH_SIZE" default:"1" required:"true"`
 		Name      string `envconfig:"API_QUEUE_INTERESTS_UPDATED_NAME" default:"int-bluesky" required:"true"`
 		Subj      string `envconfig:"API_QUEUE_INTERESTS_UPDATED_SUBJ" default:"interests-updated" required:"true"`
+	}
+	SourceWebsocket struct {
+		BatchSize uint32 `envconfig:"API_QUEUE_SRC_WEBSOCKET_BATCH_SIZE" default:"100" required:"true"`
+		Name      string `envconfig:"API_QUEUE_SRC_WEBSOCKET_NAME" default:"int-bluesky" required:"true"`
+		Subj      string `envconfig:"API_QUEUE_SRC_WEBSOCKET_SUBJ" default:"source-websocket-bluesky" required:"true"`
 	}
 }
 

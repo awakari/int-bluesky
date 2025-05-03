@@ -31,8 +31,6 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           env:
-            - name: API_PORT
-              value: "{{ .Values.service.port }}"
             - name: API_HTTP_PORT
               value: "{{ .Values.service.http.port }}"
             {{- range .Values.ingressHttpV1.hosts }}
@@ -52,6 +50,12 @@ spec:
                 secretKeyRef:
                   key: "{{ .Values.api.token.internal.key }}"
                   name: "{{ .Values.api.token.internal.name }}"
+            - name: API_WRITER_BACKOFF
+              value: "{{ .Values.api.writer.backoff }}"
+            - name: API_WRITER_TIMEOUT
+              value: "{{ .Values.api.writer.timeout }}"
+            - name: API_WRITER_URI
+              value: "{{ .Values.api.writer.uri }}"
             - name: API_READER_URI
               value: "{{ .Values.api.reader.uri }}"
             - name: API_READER_URI_EVT_BASE
@@ -91,14 +95,17 @@ spec:
                 secretKeyRef:
                   key: "{{ .Values.api.bluesky.app.password.secret.keyRef }}"
                   name: "{{ .Values.api.bluesky.app.password.secret.name }}"
+            - name: API_QUEUE_SRC_WEBSOCKET_BATCH_SIZE
+              value: "{{ .Values.queue.sourceWebsocket.batchSize }}"
+            - name: API_QUEUE_SRC_WEBSOCKET_NAME
+              value: "{{ .Values.queue.sourceWebsocket.name }}"
+            - name: API_QUEUE_SRC_WEBSOCKET_SUBJ
+              value: "{{ .Values.queue.sourceWebsocket.subj }}"
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - name: grpc
-              containerPort: {{ .Values.service.port }}
-              protocol: TCP
             - name: http
               containerPort: {{ .Values.service.http.port }}
               protocol: TCP
@@ -109,13 +116,15 @@ spec:
               containerPort: {{ .Values.service.metrics.port }}
               protocol: TCP
           livenessProbe:
-            grpc:
-              port: {{ .Values.service.port }}
-            timeoutSeconds: 10
+            tcpSocket:
+              port: {{ .Values.service.http.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
           readinessProbe:
-            grpc:
-              port: {{ .Values.service.port }}
-            timeoutSeconds: 10
+            tcpSocket:
+              port: {{ .Values.service.http.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

@@ -7,9 +7,10 @@ import (
 	"github.com/awakari/int-bluesky/api/http/bluesky"
 	"github.com/awakari/int-bluesky/api/http/handler"
 	"github.com/awakari/int-bluesky/api/http/interests"
+	"github.com/awakari/int-bluesky/api/http/pub"
 	"github.com/awakari/int-bluesky/api/http/reader"
 	"github.com/awakari/int-bluesky/config"
-	"github.com/awakari/int-bluesky/model"
+	"github.com/awakari/int-bluesky/service"
 	"github.com/awakari/int-bluesky/service/converter"
 	"github.com/cloudevents/sdk-go/binding/format/protobuf/v2/pb"
 	"github.com/gin-gonic/gin"
@@ -40,6 +41,10 @@ func main() {
 
 	clientHttp := &http.Client{}
 
+	svcPub := pub.NewService(clientHttp, cfg.Api.Writer.Uri, cfg.Api.Token.Internal, cfg.Api.Writer.Timeout)
+	svcPub = pub.NewLogging(svcPub, log)
+	log.Info("initialized the pub client")
+
 	// init websub reader
 	svcReader := reader.NewService(clientHttp, cfg.Api.Reader.Uri)
 	svcReader = reader.NewServiceLogging(svcReader, log)
@@ -61,6 +66,10 @@ func main() {
 	svcQueue := queue.NewService(clientQueue)
 	svcQueue = queue.NewLoggingMiddleware(svcQueue, log)
 
+	svcConv := converter.NewService(200, true)
+	svc := service.NewService(cfg, svcReader, callbackUrl, svcConv, svcPub)
+	svc = service.NewServiceLogging(svc, log)
+
 	err = svcQueue.SetConsumer(context.TODO(), cfg.Api.Queue.InterestsCreated.Name, cfg.Api.Queue.InterestsCreated.Subj)
 	if err != nil {
 		panic(err)
@@ -69,14 +78,11 @@ func main() {
 	go func() {
 		err = consumeQueue(
 			context.Background(),
-			svcReader,
 			svcQueue,
 			cfg.Api.Queue.InterestsCreated.Name,
 			cfg.Api.Queue.InterestsCreated.Subj,
 			cfg.Api.Queue.InterestsCreated.BatchSize,
-			func(ctx context.Context, svcReader reader.Service, evts []*pb.CloudEvent) {
-				consumeInterestEvents(ctx, evts, cfg, log, svcReader, callbackUrl)
-			},
+			svc.ConsumeInterestEvents,
 		)
 		if err != nil {
 			panic(err)
@@ -91,14 +97,30 @@ func main() {
 	go func() {
 		err = consumeQueue(
 			context.Background(),
-			svcReader,
 			svcQueue,
 			cfg.Api.Queue.InterestsUpdated.Name,
 			cfg.Api.Queue.InterestsUpdated.Subj,
 			cfg.Api.Queue.InterestsUpdated.BatchSize,
-			func(ctx context.Context, svcReader reader.Service, evts []*pb.CloudEvent) {
-				consumeInterestEvents(ctx, evts, cfg, log, svcReader, callbackUrl)
-			},
+			svc.ConsumeInterestEvents,
+		)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	err = svcQueue.SetConsumer(context.TODO(), cfg.Api.Queue.SourceWebsocket.Name, cfg.Api.Queue.SourceWebsocket.Subj)
+	if err != nil {
+		panic(err)
+	}
+	log.Info(fmt.Sprintf("initialized the %s queue", cfg.Api.Queue.SourceWebsocket.Name))
+	go func() {
+		err = consumeQueue(
+			context.Background(),
+			svcQueue,
+			cfg.Api.Queue.SourceWebsocket.Name,
+			cfg.Api.Queue.SourceWebsocket.Subj,
+			cfg.Api.Queue.SourceWebsocket.BatchSize,
+			svc.ConsumePostEvents,
 		)
 		if err != nil {
 			panic(err)
@@ -123,8 +145,6 @@ func main() {
 		}
 	}()
 
-	svcConv := converter.NewService(200, true)
-
 	svcBluesky := bluesky.NewService(clientHttp)
 	svcBluesky = bluesky.NewLogging(svcBluesky, log)
 	did, token, err := svcBluesky.Login(context.Background(), cfg.Api.Bluesky.App.Id, cfg.Api.Bluesky.App.Password)
@@ -147,51 +167,18 @@ func main() {
 
 func consumeQueue(
 	ctx context.Context,
-	svcReader reader.Service,
 	svcQueue queue.Service,
 	name, subj string,
 	batchSize uint32,
-	consumeEvents func(ctx context.Context, svcReader reader.Service, evts []*pb.CloudEvent),
+	consumeEvents func(ctx context.Context, evts []*pb.CloudEvent) (err error),
 ) (err error) {
 	for {
 		err = svcQueue.ReceiveMessages(ctx, name, subj, batchSize, func(evts []*pb.CloudEvent) (err error) {
-			consumeEvents(ctx, svcReader, evts)
+			_ = consumeEvents(ctx, evts)
 			return
 		})
 		if err != nil {
 			panic(err)
 		}
 	}
-}
-
-func consumeInterestEvents(
-	ctx context.Context,
-	evts []*pb.CloudEvent,
-	cfg config.Config,
-	log *slog.Logger,
-	svcReader reader.Service,
-	callbackUrl string,
-) {
-	log.Debug(fmt.Sprintf("consumeInterestEvents(%d))\n", len(evts)))
-	for _, evt := range evts {
-
-		interestId := evt.GetTextData()
-		var groupId string
-		if groupIdAttr, groupIdIdPresent := evt.Attributes[model.CeKeyGroupId]; groupIdIdPresent {
-			groupId = groupIdAttr.GetCeString()
-		}
-		if groupId == "" {
-			log.Error(fmt.Sprintf("interest %s event: empty group id, skipping", interestId))
-			continue
-		}
-
-		publicAttr, publicAttrPresent := evt.Attributes[model.CeKeyPublic]
-		switch publicAttrPresent && publicAttr.GetCeBoolean() {
-		case true:
-			_ = svcReader.CreateCallback(ctx, interestId, callbackUrl)
-		default:
-			log.Debug(fmt.Sprintf("interest %s event: public: %t/%t", interestId, publicAttrPresent, publicAttr.GetCeBoolean()))
-		}
-	}
-	return
 }

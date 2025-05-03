@@ -15,3 +15,8 @@ ingressHttpV1:
     - secretName: secret-int-bluesky-tls-server
       hosts:
         - bluesky.awakari.com
+
+api:
+  bluesky:
+    app:
+      id: "bluesky.awakari.com"

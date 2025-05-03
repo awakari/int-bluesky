@@ -37,7 +37,6 @@ securityContext: {}
 
 service:
   type: ClusterIP
-  port: 50051
   http:
     port: 8080
   callback:
@@ -108,7 +107,6 @@ affinity:
 api:
   bluesky:
     app:
-      id: "awakari"
       password:
         secret:
           name: "int-bluesky"
@@ -119,6 +117,10 @@ api:
   interests:
     uri: "http://interests-api:8080/v1"
     detailsUriPrefix: "https://awakari.com/sub-details.html?id="
+  writer:
+    backoff: "10s"
+    timeout: "10s"
+    uri: "http://pub:8080/v1"
   reader:
     uri: "http://reader:8080/v1"
     uriEvtBase: "https://awakari.com/pub-msg.html?id="
@@ -152,3 +154,7 @@ queue:
     batchSize: 1
     name: "int-bluesky"
     subj: "interests-updated"
+  sourceWebsocket:
+    batchSize: 100
+    name: "int-bluesky"
+    subj: "source-websocket-bluesky"
