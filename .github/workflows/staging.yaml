@@ -70,4 +70,5 @@ jobs:
       - name: Helm Upgrade
         run: |
           helm upgrade --install ${COMPONENT} helm/package/${COMPONENT}-0.0.0.tgz \
+            --values helm/int-bluesky/values-awakari-com.yaml \
             --set-string podAnnotations.commit=$(git rev-parse --short HEAD)

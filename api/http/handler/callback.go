@@ -14,7 +14,6 @@ import (
 	ce "github.com/cloudevents/sdk-go/v2/event"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 )
@@ -97,21 +96,15 @@ func (ch callbackHandler) Deliver(ctx *gin.Context) {
 		return
 	}
 
-	followerUrl, err := url.QueryUnescape(ctx.Query(reader.QueryParamFollower))
-	if err != nil || followerUrl == "" {
-		ctx.String(http.StatusBadRequest, fmt.Sprintf("follower parameter is missing or invalid: val=%s, err=%s", ctx.Query(reader.QueryParamFollower), err))
-		return
-	}
-
 	defer ctx.Request.Body.Close()
 	var evts []*ce.Event
-	err = sonic.ConfigDefault.NewDecoder(ctx.Request.Body).Decode(&evts)
-	if err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(ctx.Request.Body).Decode(&evts); err != nil {
 		ctx.String(http.StatusBadRequest, fmt.Sprintf("failed to deserialize the request payload: %s", err))
 		return
 	}
 
 	var countDelivered uint64
+	var err error
 	for _, evt := range evts {
 		var evtProto *pb.CloudEvent
 		evtProto, err = ceProto.ToProto(evt)

@@ -28,6 +28,6 @@ func (l logging) Login(ctx context.Context, id, password string) (did, token str
 
 func (l logging) CreatePost(ctx context.Context, post *bsky.FeedPost, did, token string) (uri string, err error) {
 	uri, err = l.svc.CreatePost(ctx, post, did, token)
-	l.log.Log(ctx, util.LogLevel(err), fmt.Sprintf("service.CreatePost(%s): %s", did, err))
+	l.log.Log(ctx, util.LogLevel(err), fmt.Sprintf("service.CreatePost(%s, %s): %s", did, post.Text, err))
 	return
 }
