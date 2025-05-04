@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/awakari/int-bluesky/api/http/bluesky"
 	"github.com/awakari/int-bluesky/api/http/pub"
 	"github.com/awakari/int-bluesky/api/http/reader"
 	"github.com/awakari/int-bluesky/config"
@@ -23,15 +24,33 @@ type service struct {
 	callbackUrl string
 	svcConv     converter.Service
 	svcPub      pub.Service
+	svcBluesky  bluesky.Service
+	didWeb      string
+	didPlc      string
+	token       string
 }
 
-func NewService(cfg config.Config, svcReader reader.Service, callbackUrl string, svcConv converter.Service, svcPub pub.Service) Service {
+func NewService(
+	cfg config.Config,
+	svcReader reader.Service,
+	callbackUrl string,
+	svcConv converter.Service,
+	svcPub pub.Service,
+	svcBluesky bluesky.Service,
+	didWeb string,
+	didPlc string,
+	token string,
+) Service {
 	return service{
 		cfg:         cfg,
 		svcReader:   svcReader,
 		callbackUrl: callbackUrl,
 		svcConv:     svcConv,
 		svcPub:      svcPub,
+		svcBluesky:  svcBluesky,
+		didWeb:      didWeb,
+		didPlc:      didPlc,
+		token:       token,
 	}
 }
 
@@ -49,6 +68,7 @@ func (s service) ConsumeInterestEvents(ctx context.Context, evts []*pb.CloudEven
 		publicAttr, publicAttrPresent := evt.Attributes[model.CeKeyPublic]
 		if publicAttrPresent && publicAttr.GetCeBoolean() {
 			_ = s.svcReader.CreateCallback(ctx, interestId, s.callbackUrl)
+			_ = s.svcBluesky.CreateFeed(ctx, s.didWeb, s.didPlc, s.token, interestId)
 		}
 	}
 	return

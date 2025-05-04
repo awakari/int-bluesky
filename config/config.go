@@ -30,6 +30,16 @@ type ApiConfig struct {
 	Interests struct {
 		Uri              string `envconfig:"API_INTERESTS_URI" required:"true" default:"http://interests-api:8080/v1"`
 		DetailsUriPrefix string `envconfig:"API_INTERESTS_DETAILS_URI_PREFIX" required:"true" default:"https://awakari.com/sub-details.html?id="`
+		Grpc             struct {
+			Uri        string `envconfig:"API_INTERESTS_GRPC_URI" default:"interests-api:50051" required:"true"`
+			Connection struct {
+				Count struct {
+					Init uint32 `envconfig:"API_INTERESTS_GRPC_CONN_COUNT_INIT" default:"1" required:"true"`
+					Max  uint32 `envconfig:"API_INTERESTS_GRPC_CONN_COUNT_MAX" default:"5" required:"true"`
+				}
+				IdleTimeout time.Duration `envconfig:"API_INTERESTS_GRCP_CONN_IDLE_TIMEOUT" default:"15m" required:"true"`
+			}
+		}
 	}
 	Writer struct {
 		Backoff time.Duration `envconfig:"API_WRITER_BACKOFF" default:"10s" required:"true"`

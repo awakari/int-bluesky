@@ -14,6 +14,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/microcosm-cc/bluemonday v1.0.27
+	github.com/processout/grpc-go-pool v1.2.1
 	github.com/reiver/go-bsky v0.0.0-20240906205655-8c7fadb4f3bb
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.72.0

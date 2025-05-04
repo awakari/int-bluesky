@@ -6,6 +6,10 @@ option go_package = "api/grpc/interests";
 
 import "google/protobuf/timestamp.proto";
 
+service Service {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
 // Read
 
 message ReadRequest {
@@ -20,4 +24,33 @@ message ReadResponse {
   google.protobuf.Timestamp updated = 6;
   bool public = 7;
   int64 followers = 8;
+}
+
+// Search
+
+enum Order {
+  ASC = 0;
+  DESC = 1;
+}
+
+message SearchRequest {
+  Cursor cursor = 1;
+  uint32 limit = 2;
+  Order order = 3;
+  string Pattern = 4;
+  Sort sort = 5;
+}
+
+message Cursor {
+  string id = 1;
+  int64 followers = 2;
+}
+
+enum Sort {
+  ID = 0;
+  FOLLOWERS = 1;
+}
+
+message SearchResponse {
+  repeated string ids = 1;
 }

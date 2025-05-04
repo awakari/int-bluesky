@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	gprcInterests "github.com/awakari/int-bluesky/api/grpc/interests"
 	"github.com/awakari/int-bluesky/api/grpc/queue"
 	"github.com/awakari/int-bluesky/api/http/bluesky"
 	"github.com/awakari/int-bluesky/api/http/handler"
@@ -14,6 +15,7 @@ import (
 	"github.com/awakari/int-bluesky/service/converter"
 	"github.com/cloudevents/sdk-go/binding/format/protobuf/v2/pb"
 	"github.com/gin-gonic/gin"
+	grpcpool "github.com/processout/grpc-go-pool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"log/slog"
@@ -56,6 +58,29 @@ func main() {
 		cfg.Api.Reader.CallBack.Path,
 	)
 
+	connPoolInterests, err := grpcpool.New(
+		func() (*grpc.ClientConn, error) {
+			return grpc.NewClient(cfg.Api.Interests.Grpc.Uri, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		},
+		int(cfg.Api.Interests.Grpc.Connection.Count.Init),
+		int(cfg.Api.Interests.Grpc.Connection.Count.Max),
+		cfg.Api.Interests.Grpc.Connection.IdleTimeout,
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer connPoolInterests.Close()
+	clientInterests := gprcInterests.NewClientPool(connPoolInterests)
+	svcGrpcInterests := gprcInterests.NewService(clientInterests)
+	svcGrpcInterests = gprcInterests.NewLoggingMiddleware(svcGrpcInterests, log)
+
+	svcBluesky := bluesky.NewService(clientHttp)
+	svcBluesky = bluesky.NewLogging(svcBluesky, log)
+	didPlc, token, err := svcBluesky.Login(context.Background(), cfg.Api.Bluesky.App.Id, cfg.Api.Bluesky.App.Password)
+	if err != nil {
+		panic(err)
+	}
+
 	// init queues
 	connQueue, err := grpc.NewClient(cfg.Api.Queue.Uri, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -66,8 +91,9 @@ func main() {
 	svcQueue := queue.NewService(clientQueue)
 	svcQueue = queue.NewLoggingMiddleware(svcQueue, log)
 
-	svcConv := converter.NewService(200, true)
-	svc := service.NewService(cfg, svcReader, callbackUrl, svcConv, svcPub)
+	svcConv := converter.NewService(256, true)
+	didWeb := fmt.Sprintf("did:web:%s", cfg.Api.Http.Host)
+	svc := service.NewService(cfg, svcReader, callbackUrl, svcConv, svcPub, svcBluesky, didWeb, didPlc, token)
 	svc = service.NewServiceLogging(svc, log)
 
 	err = svcQueue.SetConsumer(context.TODO(), cfg.Api.Queue.InterestsCreated.Name, cfg.Api.Queue.InterestsCreated.Subj)
@@ -127,15 +153,24 @@ func main() {
 		}
 	}()
 
-	r := gin.Default()
+	hDid := handler.DidHandler{
+		Id:              didWeb,
+		ServiceEndpoint: fmt.Sprintf("https://%s", cfg.Api.Http.Host),
+	}
+	hFeed := handler.FeedHandler{
+		DidWeb:       didWeb,
+		SvcBluesky:   svcBluesky,
+		DidPlc:       didPlc,
+		Token:        token,
+		SvcInterests: svcGrpcInterests,
+		UrlPrivacy:   "https://awakari.com/privacy.html",
+		UrlTos:       "https://awakari.com/tos.html",
+	}
 
-	r.GET("/.well-known/did.json", func(ctx *gin.Context) {
-		ctx.Header("Content-Type", "application/json")
-		ctx.JSONP(http.StatusOK, gin.H{
-			"@context": "https://www.w3.org/ns/did/v1",
-			"id":       fmt.Sprintf("did:web:%s", cfg.Api.Http.Host),
-		})
-	})
+	r := gin.Default()
+	r.GET("/.well-known/did.json", hDid.Handle)
+	r.GET("/xrpc/app.bsky.feed.describeFeedGenerator", hFeed.DescribeFeedGenerator)
+	r.GET("/xrpc/app.bsky.feed.getFeedSkeleton", hFeed.Skeleton)
 
 	log.Info(fmt.Sprintf("starting to listen the HTTP API @ port #%d...", cfg.Api.Http.Port))
 	go func() {
@@ -145,14 +180,7 @@ func main() {
 		}
 	}()
 
-	svcBluesky := bluesky.NewService(clientHttp)
-	svcBluesky = bluesky.NewLogging(svcBluesky, log)
-	did, token, err := svcBluesky.Login(context.Background(), cfg.Api.Bluesky.App.Id, cfg.Api.Bluesky.App.Password)
-	if err != nil {
-		panic(err)
-	}
-
-	hc := handler.NewCallbackHandler(cfg.Api.Reader.Uri, cfg.Api.Http.Host, cfg.Api.EventType, svcConv, svcBluesky, did, token)
+	hc := handler.NewCallbackHandler(cfg.Api.Reader.Uri, cfg.Api.Http.Host, cfg.Api.EventType, svcConv, svcBluesky, didPlc, token)
 
 	log.Info(fmt.Sprintf("starting to listen the HTTP API @ port #%d...", cfg.Api.Reader.CallBack.Port))
 	internalCallbacks := gin.Default()

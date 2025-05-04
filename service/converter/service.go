@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/awakari/int-bluesky/model"
 	"github.com/awakari/int-bluesky/service/firehose"
+	"github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/cloudevents/sdk-go/binding/format/protobuf/v2/pb"
 	"github.com/microcosm-cc/bluemonday"
@@ -45,7 +46,16 @@ func NewService(
 
 func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId string, t *time.Time) (post *bsky.FeedPost, err error) {
 
-	post = &bsky.FeedPost{}
+	post = &bsky.FeedPost{
+		Labels: &bsky.FeedPost_Labels{
+			LabelDefs_SelfLabels: &atproto.LabelDefs_SelfLabels{
+				Values: []*atproto.LabelDefs_SelfLabel{{
+					Val: interestId,
+				}},
+			},
+		},
+	}
+
 	switch t {
 	case nil:
 		post.CreatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -72,15 +82,6 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 		addrOrigin = "https://t.me/" + addrOrigin[1:]
 	}
 
-	post.Embed = &bsky.FeedPost_Embed{
-		EmbedExternal: &bsky.EmbedExternal{
-			External: &bsky.EmbedExternal_External{
-				Description: "Origin",
-				Uri:         addrOrigin,
-			},
-		},
-	}
-
 	attrCats, _ := evt.Attributes[model.CeKeyCategories]
 	cats := strings.Split(attrCats.GetCeString(), " ")
 	for _, cat := range cats {
@@ -100,12 +101,35 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 	post.Text = s.htmlStripTags.Sanitize(post.Text)
 	post.Text = reMultiSpace.ReplaceAllString(post.Text, " ")
 	post.Text = truncateStringUtf8(post.Text, s.fmtLenMaxBodyTxt)
+	post.Text += "\nOrigin"
+	post.Text += "\nResult Details"
 
-	addrInterest := "https://awakari.com/sub-details.html?id=" + interestId
-	post.Text += "\n<a href=\"" + addrInterest + "\">Interest</a>\n"
-
-	addrEvtAttrs := "https://awakari.com/pub-msg.html?id=" + evt.Id + "&interestId=" + interestId
-	post.Text += "\n<a href=\"" + addrEvtAttrs + "\">Result Details</a>"
+	startOrigin := strings.LastIndex(post.Text, "Origin")
+	startResultDetails := strings.LastIndex(post.Text, "Result Details")
+	post.Facets = append(post.Facets,
+		&bsky.RichtextFacet{
+			Features: []*bsky.RichtextFacet_Features_Elem{{
+				RichtextFacet_Link: &bsky.RichtextFacet_Link{
+					Uri: "https://awakari.com/pub-msg.html?id=" + evt.Id + "&interestId=" + interestId,
+				},
+			}},
+			Index: &bsky.RichtextFacet_ByteSlice{
+				ByteStart: int64(startResultDetails),
+				ByteEnd:   int64(startResultDetails + len("Result Details")),
+			},
+		},
+		&bsky.RichtextFacet{
+			Features: []*bsky.RichtextFacet_Features_Elem{{
+				RichtextFacet_Link: &bsky.RichtextFacet_Link{
+					Uri: addrOrigin,
+				},
+			}},
+			Index: &bsky.RichtextFacet_ByteSlice{
+				ByteStart: int64(startOrigin),
+				ByteEnd:   int64(startOrigin + len("Origin")),
+			},
+		},
+	)
 
 	return
 }

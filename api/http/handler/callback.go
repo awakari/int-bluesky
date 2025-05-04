@@ -120,7 +120,6 @@ func (ch callbackHandler) Deliver(ctx *gin.Context) {
 		if err == nil {
 			switch evtProto.Type {
 			case ch.cfgEvtType.InterestsUpdated:
-				// TODO
 				fallthrough
 			default:
 				var post *bsky.FeedPost
