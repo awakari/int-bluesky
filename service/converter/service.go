@@ -12,6 +12,7 @@ import (
 	"github.com/cloudevents/sdk-go/binding/format/protobuf/v2/pb"
 	"github.com/microcosm-cc/bluemonday"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"html"
 	"math"
 	"reflect"
 	"regexp"
@@ -101,10 +102,11 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 	}
 
 	post.Text = eventSummaryText(evt)
-	post.Text = s.htmlStripTags.Sanitize(post.Text)
+	post.Text = html.UnescapeString(s.htmlStripTags.Sanitize(post.Text))
 	post.Text = reMultiSpace.ReplaceAllString(post.Text, " ")
 	post.Text = util.TruncateStringUtf8(post.Text, s.fmtLenMaxBodyTxt)
-	post.Text += "\nResult Details"
+	post.Text += "\nDetails"
+	post.Text += "\nFeed"
 
 	post.Embed = &bsky.FeedPost_Embed{
 		EmbedExternal: &bsky.EmbedExternal{
@@ -113,14 +115,10 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 				Uri:         addrOrigin,
 			},
 		},
-		EmbedRecord: &bsky.EmbedRecord{
-			Record: &atproto.RepoStrongRef{
-				Uri: fmt.Sprintf("https://bsky.app/profile/%s/feed/%s", s.didPlc, interestId),
-			},
-		},
 	}
 
-	startResultDetails := strings.LastIndex(post.Text, "Result Details")
+	startResultDetails := strings.LastIndex(post.Text, "Details")
+	startFeed := strings.LastIndex(post.Text, "Feed")
 	post.Facets = append(post.Facets,
 		&bsky.RichtextFacet{
 			Features: []*bsky.RichtextFacet_Features_Elem{{
@@ -130,7 +128,18 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 			}},
 			Index: &bsky.RichtextFacet_ByteSlice{
 				ByteStart: int64(startResultDetails),
-				ByteEnd:   int64(startResultDetails + len("Result Details")),
+				ByteEnd:   int64(startResultDetails + len("Details")),
+			},
+		},
+		&bsky.RichtextFacet{
+			Features: []*bsky.RichtextFacet_Features_Elem{{
+				RichtextFacet_Link: &bsky.RichtextFacet_Link{
+					Uri: fmt.Sprintf("https://bsky.app/profile/%s/feed/%s", s.didPlc, interestId),
+				},
+			}},
+			Index: &bsky.RichtextFacet_ByteSlice{
+				ByteStart: int64(startFeed),
+				ByteEnd:   int64(startFeed + len("Feed")),
 			},
 		},
 	)

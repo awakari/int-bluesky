@@ -24,12 +24,13 @@ type FeedHandler struct {
 
 const maxId = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
 const fmtFeedPrefix = "at://%s/app.bsky.feed.generator/"
+const pageSizeDefault = 100
 
 func (h FeedHandler) DescribeFeedGenerator(ctx *gin.Context) {
 	q := &interests.Query{
 		Sort:   interests.Sort_FOLLOWERS,
 		Order:  interests.Order_DESC,
-		Limit:  100,
+		Limit:  pageSizeDefault,
 		Public: true,
 	}
 	cursor := &interests.Cursor{
@@ -68,10 +69,21 @@ func (h FeedHandler) Skeleton(ctx *gin.Context) {
 	interestId := strings.TrimPrefix(feedUrl, feedPrefix)
 
 	cursor := ctx.Query("cursor")
-	urls, next, err := h.SvcBluesky.Posts(ctx, h.DidPlc, h.Token, interestId, cursor)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "failed to list posts")
-		return
+	var urls []string
+	for len(urls) < pageSizeDefault {
+		urlsNext, cursorNext, err := h.SvcBluesky.Posts(ctx, h.DidPlc, h.Token, interestId, cursor)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, "failed to list posts")
+			return
+		}
+		urls = append(urls, urlsNext...)
+		cursor = cursorNext
+		if cursor == "" {
+			break
+		}
+		if len(urlsNext) > 0 {
+			break // return any single result immediately to avoid too many loops
+		}
 	}
 
 	feed := make([]*bsky.FeedDefs_SkeletonFeedPost, 0)
@@ -83,7 +95,7 @@ func (h FeedHandler) Skeleton(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, bsky.FeedGetFeedSkeleton_Output{
-		Cursor: &next,
+		Cursor: &cursor,
 		Feed:   feed,
 	})
 }

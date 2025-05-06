@@ -164,6 +164,9 @@ func (s service) Posts(ctx context.Context, did, token, interestId, cursor strin
 			err = fmt.Errorf("response read failure: %s", err)
 		}
 	}
+	if err == nil && resp.StatusCode > 299 {
+		err = fmt.Errorf("response: %d, %s", resp.StatusCode, string(respData))
+	}
 	var all actorPostsResp
 	if err == nil {
 		if err = sonic.Unmarshal(respData, &all); err != nil {
@@ -171,7 +174,6 @@ func (s service) Posts(ctx context.Context, did, token, interestId, cursor strin
 		}
 	}
 	if err == nil {
-		fmt.Printf("posts: %s\n", string(respData))
 		next = all.Cursor
 		for _, p := range all.Feed {
 			if p.Post.Record.Labels == nil {
