@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/awakari/int-bluesky/model"
 	"github.com/awakari/int-bluesky/service/firehose"
+	"github.com/awakari/int-bluesky/util"
 	"github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/cloudevents/sdk-go/binding/format/protobuf/v2/pb"
@@ -17,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 type Service interface {
@@ -28,6 +28,7 @@ type Service interface {
 type service struct {
 	fmtLenMaxBodyTxt int
 	htmlStripTags    *bluemonday.Policy
+	didPlc           string
 }
 
 var reMultiSpace = regexp.MustCompile(`\s+`)
@@ -35,12 +36,14 @@ var reMultiSpace = regexp.MustCompile(`\s+`)
 func NewService(
 	fmtLenMaxBodyTxt int,
 	addSpaceWhenStripTags bool,
+	didPlc string,
 ) Service {
 	return service{
 		fmtLenMaxBodyTxt: fmtLenMaxBodyTxt,
 		htmlStripTags: bluemonday.
 			StrictPolicy().
 			AddSpaceWhenStrippingTag(addSpaceWhenStripTags),
+		didPlc: didPlc,
 	}
 }
 
@@ -100,11 +103,23 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 	post.Text = eventSummaryText(evt)
 	post.Text = s.htmlStripTags.Sanitize(post.Text)
 	post.Text = reMultiSpace.ReplaceAllString(post.Text, " ")
-	post.Text = truncateStringUtf8(post.Text, s.fmtLenMaxBodyTxt)
-	post.Text += "\nOrigin"
+	post.Text = util.TruncateStringUtf8(post.Text, s.fmtLenMaxBodyTxt)
 	post.Text += "\nResult Details"
 
-	startOrigin := strings.LastIndex(post.Text, "Origin")
+	post.Embed = &bsky.FeedPost_Embed{
+		EmbedExternal: &bsky.EmbedExternal{
+			External: &bsky.EmbedExternal_External{
+				Description: "Origin",
+				Uri:         addrOrigin,
+			},
+		},
+		EmbedRecord: &bsky.EmbedRecord{
+			Record: &atproto.RepoStrongRef{
+				Uri: fmt.Sprintf("https://bsky.app/profile/%s/feed/%s", s.didPlc, interestId),
+			},
+		},
+	}
+
 	startResultDetails := strings.LastIndex(post.Text, "Result Details")
 	post.Facets = append(post.Facets,
 		&bsky.RichtextFacet{
@@ -116,17 +131,6 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 			Index: &bsky.RichtextFacet_ByteSlice{
 				ByteStart: int64(startResultDetails),
 				ByteEnd:   int64(startResultDetails + len("Result Details")),
-			},
-		},
-		&bsky.RichtextFacet{
-			Features: []*bsky.RichtextFacet_Features_Elem{{
-				RichtextFacet_Link: &bsky.RichtextFacet_Link{
-					Uri: addrOrigin,
-				},
-			}},
-			Index: &bsky.RichtextFacet_ByteSlice{
-				ByteStart: int64(startOrigin),
-				ByteEnd:   int64(startOrigin + len("Origin")),
 			},
 		},
 	)
@@ -179,19 +183,6 @@ func eventSummaryText(evt *pb.CloudEvent) (txt string) {
 	}
 
 	return
-}
-
-func truncateStringUtf8(s string, lenMax int) string {
-	if len(s) <= lenMax {
-		return s
-	}
-	// Ensure we don't split a UTF-8 character in the middle.
-	for i := lenMax - 3; i > 0; i-- {
-		if utf8.RuneStart(s[i]) {
-			return s[:i] + "..."
-		}
-	}
-	return ""
 }
 
 type ConvertFunc func(evt *pb.CloudEvent, v any) (err error)

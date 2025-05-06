@@ -74,7 +74,7 @@ func main() {
 	svcGrpcInterests := gprcInterests.NewService(clientInterests)
 	svcGrpcInterests = gprcInterests.NewLoggingMiddleware(svcGrpcInterests, log)
 
-	svcBluesky := bluesky.NewService(clientHttp)
+	svcBluesky := bluesky.NewService(clientHttp, svcInterests)
 	svcBluesky = bluesky.NewLogging(svcBluesky, log)
 	didPlc, token, err := svcBluesky.Login(context.Background(), cfg.Api.Bluesky.App.Id, cfg.Api.Bluesky.App.Password)
 	if err != nil {
@@ -91,7 +91,7 @@ func main() {
 	svcQueue := queue.NewService(clientQueue)
 	svcQueue = queue.NewLoggingMiddleware(svcQueue, log)
 
-	svcConv := converter.NewService(256, true)
+	svcConv := converter.NewService(256, true, didPlc)
 	didWeb := fmt.Sprintf("did:web:%s", cfg.Api.Http.Host)
 	svc := service.NewService(cfg, svcReader, callbackUrl, svcConv, svcPub, svcBluesky, didWeb, didPlc, token)
 	svc = service.NewServiceLogging(svc, log)

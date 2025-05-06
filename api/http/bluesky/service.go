@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	apiHttpInterests "github.com/awakari/int-bluesky/api/http/interests"
+	"github.com/awakari/int-bluesky/model"
+	"github.com/awakari/int-bluesky/util"
 	"github.com/bluesky-social/indigo/api/agnostic"
 	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bytedance/sonic"
@@ -20,7 +23,8 @@ type Service interface {
 }
 
 type service struct {
-	clientHttp *http.Client
+	clientHttp   *http.Client
+	svcInterests apiHttpInterests.Service
 }
 
 type loginReq struct {
@@ -45,22 +49,27 @@ type createPostResp struct {
 }
 
 type actorPostsResp struct {
-	Feed   []post `json:"feed"`
-	Cursor string
+	Feed   []feedItem `json:"feed"`
+	Cursor string     `json:"cursor"`
 }
 
-type post struct {
-	Uri    string                `json:"uri"`
-	Labels *bsky.FeedPost_Labels `json:"labels,omitempty" cborgen:"labels,omitempty"`
+type feedItem struct {
+	Post struct {
+		Uri    string `json:"uri"`
+		Record struct {
+			Labels *bsky.FeedPost_Labels `json:"labels,omitempty" cborgen:"labels,omitempty"`
+		} `json:"record"`
+	} `json:"post"`
 }
 
 const valContentTypeJson = "application/json"
 const limitBodyLen = 1_048_576
 const coll = "app.bsky.feed.post"
 
-func NewService(clientHttp *http.Client) Service {
+func NewService(clientHttp *http.Client, svcInterests apiHttpInterests.Service) Service {
 	return service{
-		clientHttp: clientHttp,
+		clientHttp:   clientHttp,
+		svcInterests: svcInterests,
 	}
 }
 
@@ -162,39 +171,69 @@ func (s service) Posts(ctx context.Context, did, token, interestId, cursor strin
 		}
 	}
 	if err == nil {
+		fmt.Printf("posts: %s\n", string(respData))
 		next = all.Cursor
 		for _, p := range all.Feed {
-			lblVals := p.Labels.LabelDefs_SelfLabels.Values
-			if len(lblVals) > 0 && lblVals[0].Val == interestId {
-				urls = append(urls, p.Uri)
+			if p.Post.Record.Labels == nil {
+				continue
 			}
+			if p.Post.Record.Labels.LabelDefs_SelfLabels == nil {
+				continue
+			}
+			lblVals := p.Post.Record.Labels.LabelDefs_SelfLabels.Values
+			if len(lblVals) < 1 {
+				continue
+			}
+			if lblVals[0].Val != interestId {
+				continue
+			}
+			urls = append(urls, p.Post.Uri)
 		}
 	}
 	return
 }
 
 func (s service) CreateFeed(ctx context.Context, didWeb, didPlc, token, interestId string) (err error) {
-	body, _ := sonic.Marshal(&agnostic.RepoPutRecord_Input{
-		Collection: "app.bsky.feed.generator",
-		Record: map[string]any{
-			"$type":       "app.bsky.feed.generator",
-			"createdAt":   time.Now().UTC().Format(time.RFC3339),
-			"did":         didWeb, // ← feed generator server DID
-			"displayName": interestId,
-			"description": fmt.Sprintf("https://awakari.com/sub-details.html?id=%s", interestId),
-		},
-		Repo: didPlc,
-		Rkey: interestId,
-	})
-	req, _ := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		"https://bsky.social/xrpc/com.atproto.repo.putRecord",
-		bytes.NewReader(body),
-	)
-	req.Header.Set("Accept", valContentTypeJson)
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", valContentTypeJson)
+	var interest model.InterestData
+	if interest, err = s.svcInterests.Read(ctx, model.GroupIdDefault, model.UserIdDefault, interestId); err != nil {
+		err = fmt.Errorf("failed to read the interest %s: %w", interestId, err)
+	}
+	var req *http.Request
+	if err == nil {
+		interestLnk := fmt.Sprintf("https://awakari.com/sub-details.html?id=%s", interestId)
+		body, _ := sonic.Marshal(&agnostic.RepoPutRecord_Input{
+			Collection: "app.bsky.feed.generator",
+			Record: map[string]any{
+				"$type":               "app.bsky.feed.generator",
+				"acceptsInteractions": util.Ptr(true),
+				"createdAt":           time.Now().UTC().Format(time.RFC3339),
+				"did":                 didWeb, // ← feed generator server DID
+				"displayName":         util.TruncateStringUtf8(interest.Description, 24),
+				"description":         interestLnk,
+				"descriptionFacets": []*bsky.RichtextFacet{{
+					Features: []*bsky.RichtextFacet_Features_Elem{{
+						RichtextFacet_Link: &bsky.RichtextFacet_Link{
+							Uri: interestLnk,
+						},
+					}},
+					Index: &bsky.RichtextFacet_ByteSlice{
+						ByteEnd: int64(len(interestLnk)),
+					},
+				}},
+			},
+			Repo: didPlc,
+			Rkey: interestId,
+		})
+		req, _ = http.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			"https://bsky.social/xrpc/com.atproto.repo.putRecord",
+			bytes.NewReader(body),
+		)
+		req.Header.Set("Accept", valContentTypeJson)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", valContentTypeJson)
+	}
 	var resp *http.Response
 	if resp, err = s.clientHttp.Do(req); err != nil {
 		err = fmt.Errorf("request failure: %s", err)

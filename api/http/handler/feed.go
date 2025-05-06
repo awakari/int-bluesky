@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"github.com/awakari/int-bluesky/api/grpc/interests"
 	"github.com/awakari/int-bluesky/api/http/bluesky"
+	"github.com/awakari/int-bluesky/model"
 	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/gin-gonic/gin"
 	"math"
 	"net/http"
+	"strings"
 )
 
 type FeedHandler struct {
@@ -21,8 +23,7 @@ type FeedHandler struct {
 }
 
 const maxId = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
-const groupId = "default"
-const userId = "public"
+const fmtFeedPrefix = "at://%s/app.bsky.feed.generator/"
 
 func (h FeedHandler) DescribeFeedGenerator(ctx *gin.Context) {
 	q := &interests.Query{
@@ -35,7 +36,7 @@ func (h FeedHandler) DescribeFeedGenerator(ctx *gin.Context) {
 		Id:        maxId,
 		Followers: math.MaxInt64,
 	}
-	idsPage, err := h.SvcInterests.Search(ctx, groupId, userId, q, cursor)
+	idsPage, err := h.SvcInterests.Search(ctx, model.GroupIdDefault, model.UserIdDefault, q, cursor)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, "failed to list feeds")
 		return
@@ -59,7 +60,13 @@ func (h FeedHandler) DescribeFeedGenerator(ctx *gin.Context) {
 
 func (h FeedHandler) Skeleton(ctx *gin.Context) {
 
-	interestId := ctx.Query("feed")
+	feedUrl := ctx.Query("feed")
+	feedPrefix := fmt.Sprintf(fmtFeedPrefix, h.DidPlc)
+	if !strings.HasPrefix(feedUrl, feedPrefix) {
+		ctx.JSON(http.StatusBadRequest, "invalid feed url")
+	}
+	interestId := strings.TrimPrefix(feedUrl, feedPrefix)
+
 	cursor := ctx.Query("cursor")
 	urls, next, err := h.SvcBluesky.Posts(ctx, h.DidPlc, h.Token, interestId, cursor)
 	if err != nil {
@@ -67,10 +74,11 @@ func (h FeedHandler) Skeleton(ctx *gin.Context) {
 		return
 	}
 
-	var feed []*bsky.FeedDefs_SkeletonFeedPost
+	feed := make([]*bsky.FeedDefs_SkeletonFeedPost, 0)
 	for _, u := range urls {
 		feed = append(feed, &bsky.FeedDefs_SkeletonFeedPost{
-			Post: u,
+			FeedContext: &interestId,
+			Post:        u,
 		})
 	}
 
@@ -81,6 +89,6 @@ func (h FeedHandler) Skeleton(ctx *gin.Context) {
 }
 
 func (h FeedHandler) feedUrl(interestId string) (feedUrl string) {
-	feedUrl = fmt.Sprintf("at://%s/app.bsky.feed.generator/%s", h.DidWeb, interestId)
+	feedUrl = fmt.Sprintf("at://%s/app.bsky.feed.generator/%s", h.DidPlc, interestId)
 	return
 }
