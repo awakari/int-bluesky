@@ -66,10 +66,6 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 	default:
 		post.CreatedAt = t.UTC().Format(time.RFC3339)
 	}
-	attrLang, langPresent := evt.Attributes[model.CeKeyLanguage]
-	if langPresent {
-		post.Langs = append(post.Langs, attrLang.GetCeString())
-	}
 
 	var addrOrigin string
 	attrObjUrl, attrObjUrlPresent := evt.Attributes[model.CeKeyObjectUrl]
@@ -84,6 +80,19 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 	}
 	if strings.HasPrefix(addrOrigin, "@") { // telegram source
 		addrOrigin = "https://t.me/" + addrOrigin[1:]
+	}
+	post.Embed = &bsky.FeedPost_Embed{
+		EmbedExternal: &bsky.EmbedExternal{
+			External: &bsky.EmbedExternal_External{
+				Description: "Origin",
+				Uri:         addrOrigin,
+			},
+		},
+	}
+
+	attrLang, langPresent := evt.Attributes[model.CeKeyLanguage]
+	if langPresent {
+		post.Langs = append(post.Langs, attrLang.GetCeString())
 	}
 
 	attrCats, _ := evt.Attributes[model.CeKeyCategories]
@@ -105,30 +114,33 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 	post.Text = html.UnescapeString(s.htmlStripTags.Sanitize(post.Text))
 	post.Text = reMultiSpace.ReplaceAllString(post.Text, " ")
 	post.Text = util.TruncateStringUtf8(post.Text, s.fmtLenMaxBodyTxt)
-	post.Text += "\nDetails"
-	post.Text += "\nFeed"
-
-	post.Embed = &bsky.FeedPost_Embed{
-		EmbedExternal: &bsky.EmbedExternal{
-			External: &bsky.EmbedExternal_External{
-				Description: "Origin",
-				Uri:         addrOrigin,
-			},
-		},
-	}
+	post.Text += "\n\n| Details | Interest | Feed |"
 
 	startResultDetails := strings.LastIndex(post.Text, "Details")
+	startInterest := strings.Index(post.Text, "Interest")
 	startFeed := strings.LastIndex(post.Text, "Feed")
+
 	post.Facets = append(post.Facets,
 		&bsky.RichtextFacet{
 			Features: []*bsky.RichtextFacet_Features_Elem{{
 				RichtextFacet_Link: &bsky.RichtextFacet_Link{
-					Uri: "https://awakari.com/pub-msg.html?id=" + evt.Id + "&interestId=" + interestId,
+					Uri: fmt.Sprintf("https://awakari.com/pub-msg.html?id=%s&interestId=%s", evt.Id, interestId),
 				},
 			}},
 			Index: &bsky.RichtextFacet_ByteSlice{
 				ByteStart: int64(startResultDetails),
 				ByteEnd:   int64(startResultDetails + len("Details")),
+			},
+		},
+		&bsky.RichtextFacet{
+			Features: []*bsky.RichtextFacet_Features_Elem{{
+				RichtextFacet_Link: &bsky.RichtextFacet_Link{
+					Uri: fmt.Sprintf("https://awakari.com/sub-details.html?id=%s", interestId),
+				},
+			}},
+			Index: &bsky.RichtextFacet_ByteSlice{
+				ByteStart: int64(startInterest),
+				ByteEnd:   int64(startInterest + len("Interest")),
 			},
 		},
 		&bsky.RichtextFacet{
