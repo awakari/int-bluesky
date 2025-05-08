@@ -35,7 +35,6 @@ type service struct {
 const ceType = "com_awakari_bluesky_v1"
 const tagCountMax = 8
 const tagLenMax = 64
-const fmtAtUri = "at://did:plc:%s/app.bsky.feed.post%s"
 
 var reMultiSpace = regexp.MustCompile(`\s+`)
 
@@ -87,36 +86,13 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 		addrOrigin = "https://t.me/" + addrOrigin[1:]
 	}
 
-	post.Embed = &bsky.FeedPost_Embed{}
-	switch evt.Type {
-	case ceType:
-		cid, cidOk := evt.Attributes[model.CeKeyCid]
-		did, didOk := evt.Attributes[model.CeKeyBlueskyDid]
-		rKey, rKeyOk := evt.Attributes[model.CeKeyBlueskyRKey]
-		switch cidOk && didOk && rKeyOk {
-		case true:
-			atUri := fmt.Sprintf(fmtAtUri, did.GetCeString(), rKey.GetCeString())
-			post.Embed.EmbedRecord = &bsky.EmbedRecord{
-				Record: &atproto.RepoStrongRef{
-					Cid: cid.GetCeString(),
-					Uri: atUri,
-				},
-			}
-		default:
-			post.Embed.EmbedExternal = &bsky.EmbedExternal{
-				External: &bsky.EmbedExternal_External{
-					Description: "Origin",
-					Uri:         addrOrigin,
-				},
-			}
-		}
-	default:
-		post.Embed.EmbedExternal = &bsky.EmbedExternal{
+	post.Embed = &bsky.FeedPost_Embed{
+		EmbedExternal: &bsky.EmbedExternal{
 			External: &bsky.EmbedExternal_External{
 				Description: "Origin",
 				Uri:         addrOrigin,
 			},
-		}
+		},
 	}
 
 	attrLang, langPresent := evt.Attributes[model.CeKeyLanguage]
