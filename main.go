@@ -92,6 +92,7 @@ func main() {
 	svcQueue = queue.NewLoggingMiddleware(svcQueue, log)
 
 	svcConv := converter.NewService(256, true, didPlc)
+	svcConv = converter.NewServiceLogging(svcConv, log)
 	didWeb := fmt.Sprintf("did:web:%s", cfg.Api.Http.Host)
 	svc := service.NewService(cfg, svcReader, callbackUrl, svcConv, svcPub, svcBluesky, didWeb, didPlc, token)
 	svc = service.NewServiceLogging(svc, log)

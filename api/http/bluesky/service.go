@@ -12,13 +12,15 @@ import (
 	"github.com/bytedance/sonic"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
 
 type Service interface {
 	Login(ctx context.Context, id, password string) (did, token string, err error)
 	CreatePost(ctx context.Context, post *bsky.FeedPost, did, token string) (uri string, err error)
-	Posts(ctx context.Context, did, token, interestId, cursor string) (urls []string, next string, err error)
+	Posts(ctx context.Context, did, token, interestId, cursor string, limit int) (urls []string, next string, err error)
 	CreateFeed(ctx context.Context, didWeb, didPlc, token, interestId string) (err error)
 }
 
@@ -133,6 +135,13 @@ func (s service) CreatePost(ctx context.Context, post *bsky.FeedPost, did, token
 			err = fmt.Errorf("response read failure: %s", err)
 		}
 	}
+	if err == nil && resp.StatusCode > 299 {
+		err = fmt.Errorf("response: %d, headers: %+v, body: %s, post: %+v", resp.StatusCode, resp.Header, string(respData), post)
+		if isTokenExpiredResponse(resp.StatusCode, respData) {
+			fmt.Println(err)
+			os.Exit(0)
+		}
+	}
 	var cr createPostResp
 	if err == nil {
 		if err = sonic.Unmarshal(respData, &cr); err != nil {
@@ -145,8 +154,8 @@ func (s service) CreatePost(ctx context.Context, post *bsky.FeedPost, did, token
 	return
 }
 
-func (s service) Posts(ctx context.Context, did, token, interestId, cursor string) (urls []string, next string, err error) {
-	reqUrl := fmt.Sprintf("https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?actor=%s", did)
+func (s service) Posts(ctx context.Context, did, token, interestId, cursor string, limit int) (urls []string, next string, err error) {
+	reqUrl := fmt.Sprintf("https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?actor=%s&limit=%d", did, limit)
 	if cursor != "" {
 		reqUrl += "&cursor=" + cursor
 	}
@@ -165,7 +174,11 @@ func (s service) Posts(ctx context.Context, did, token, interestId, cursor strin
 		}
 	}
 	if err == nil && resp.StatusCode > 299 {
-		err = fmt.Errorf("response: %d, %s", resp.StatusCode, string(respData))
+		err = fmt.Errorf("response: %d, headers: %+v, body: %s", resp.StatusCode, resp.Header, string(respData))
+		if isTokenExpiredResponse(resp.StatusCode, respData) {
+			fmt.Println(err)
+			os.Exit(0)
+		}
 	}
 	var all actorPostsResp
 	if err == nil {
@@ -251,4 +264,8 @@ func (s service) CreateFeed(ctx context.Context, didWeb, didPlc, token, interest
 		err = fmt.Errorf("response status: %d, %s", resp.StatusCode, string(respData))
 	}
 	return
+}
+
+func isTokenExpiredResponse(code int, body []byte) bool {
+	return code == http.StatusBadRequest && strings.Contains(string(body), "ExpiredToken")
 }

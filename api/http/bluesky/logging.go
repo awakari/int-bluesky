@@ -32,9 +32,9 @@ func (l logging) CreatePost(ctx context.Context, post *bsky.FeedPost, did, token
 	return
 }
 
-func (l logging) Posts(ctx context.Context, did, token, interestId, cursor string) (urls []string, next string, err error) {
-	urls, next, err = l.svc.Posts(ctx, did, token, interestId, cursor)
-	l.log.Log(ctx, util.LogLevel(err), fmt.Sprintf("service.Posts(%s, %s, %s): %d, %s, %s", did, interestId, cursor, len(urls), next, err))
+func (l logging) Posts(ctx context.Context, did, token, interestId, cursor string, limit int) (urls []string, next string, err error) {
+	urls, next, err = l.svc.Posts(ctx, did, token, interestId, cursor, limit)
+	l.log.Log(ctx, util.LogLevel(err), fmt.Sprintf("service.Posts(%s, %s, %s, %d): %d, %s, %s", did, interestId, cursor, limit, len(urls), next, err))
 	return
 }
 

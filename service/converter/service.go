@@ -32,6 +32,11 @@ type service struct {
 	didPlc           string
 }
 
+const ceType = "com_awakari_bluesky_v1"
+const tagCountMax = 8
+const tagLenMax = 64
+const fmtAtUri = "at://did:plc:%s/app.bsky.feed.post%s"
+
 var reMultiSpace = regexp.MustCompile(`\s+`)
 
 func NewService(
@@ -81,13 +86,37 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 	if strings.HasPrefix(addrOrigin, "@") { // telegram source
 		addrOrigin = "https://t.me/" + addrOrigin[1:]
 	}
-	post.Embed = &bsky.FeedPost_Embed{
-		EmbedExternal: &bsky.EmbedExternal{
+
+	post.Embed = &bsky.FeedPost_Embed{}
+	switch evt.Type {
+	case ceType:
+		cid, cidOk := evt.Attributes[model.CeKeyCid]
+		did, didOk := evt.Attributes[model.CeKeyBlueskyDid]
+		rKey, rKeyOk := evt.Attributes[model.CeKeyBlueskyRKey]
+		switch cidOk && didOk && rKeyOk {
+		case true:
+			atUri := fmt.Sprintf(fmtAtUri, did.GetCeString(), rKey.GetCeString())
+			post.Embed.EmbedRecord = &bsky.EmbedRecord{
+				Record: &atproto.RepoStrongRef{
+					Cid: cid.GetCeString(),
+					Uri: atUri,
+				},
+			}
+		default:
+			post.Embed.EmbedExternal = &bsky.EmbedExternal{
+				External: &bsky.EmbedExternal_External{
+					Description: "Origin",
+					Uri:         addrOrigin,
+				},
+			}
+		}
+	default:
+		post.Embed.EmbedExternal = &bsky.EmbedExternal{
 			External: &bsky.EmbedExternal_External{
 				Description: "Origin",
 				Uri:         addrOrigin,
 			},
-		},
+		}
 	}
 
 	attrLang, langPresent := evt.Attributes[model.CeKeyLanguage]
@@ -97,7 +126,10 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 
 	attrCats, _ := evt.Attributes[model.CeKeyCategories]
 	cats := strings.Split(attrCats.GetCeString(), " ")
-	for _, cat := range cats {
+	for i, cat := range cats {
+		if i == tagCountMax {
+			break
+		}
 		var tagName string
 		switch strings.HasPrefix(cat, "#") {
 		case true:
@@ -105,7 +137,7 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 		default:
 			tagName = cat
 		}
-		if len(tagName) > 0 {
+		if len(tagName) > 0 && len(tagName) <= tagLenMax {
 			post.Tags = append(post.Tags, tagName)
 		}
 	}
@@ -197,9 +229,9 @@ func eventSummaryText(evt *pb.CloudEvent) (txt string) {
 		txt += strings.TrimSpace(evt.GetTextData())
 	}
 	if txt == "" {
-		attrName, namePresent := evt.Attributes[model.CeKeyName]
-		if namePresent {
-			txt = strings.TrimSpace(attrName.GetCeString()) + "<br/>"
+		attrSnippet, snippetOk := evt.Attributes[model.CeKeySnippet]
+		if snippetOk {
+			txt = strings.TrimSpace(attrSnippet.GetCeString()) + "\n"
 		}
 	}
 
@@ -209,15 +241,17 @@ func eventSummaryText(evt *pb.CloudEvent) (txt string) {
 type ConvertFunc func(evt *pb.CloudEvent, v any) (err error)
 
 var convSchema = map[string]any{
-	"action":    toAttrStringFunc("action"),
-	"createdAt": toAttrTimestampFunc("time"),    // bluesky
-	"did":       toAttrStringFunc("blueskydid"), // bluesky
-	"objecturl": toAttrStringFunc("objecturl"),  // as it is
-	"rev":       toAttrStringFunc("blueskyrev"),
-	"subject":   toAttrStringFunc("subject"),
-	"text":      toTextDataFunc(),
-	"time":      toAttrTimestampFunc("time"),
-	"version":   toAttrInt32ElseStringFunc("blueskyversion"),
+	model.CeKeyAction:      toAttrStringFunc(model.CeKeyAction),
+	model.CeKeyBlueskyRKey: toAttrStringFunc(model.CeKeyBlueskyRKey),
+	model.CeKeyCid:         toAttrStringFunc(model.CeKeyCid),
+	"createdAt":            toAttrTimestampFunc(model.CeKeyTime),
+	"did":                  toAttrStringFunc(model.CeKeyBlueskyDid),
+	model.CeKeyObjectUrl:   toAttrStringFunc(model.CeKeyObjectUrl),
+	"rev":                  toAttrStringFunc("rev"),
+	model.CeKeySubject:     toAttrStringFunc(model.CeKeySubject),
+	"text":                 toTextDataFunc(),
+	model.CeKeyTime:        toAttrTimestampFunc(model.CeKeyTime),
+	"version":              toAttrInt32ElseStringFunc("version"),
 }
 
 var ErrConversion = errors.New("conversion failure")
@@ -230,7 +264,7 @@ func (s service) PostToEvent(ctx context.Context, src *pb.CloudEvent) (dst *pb.C
 			Id:          src.Id,
 			Source:      src.Source,
 			SpecVersion: src.SpecVersion,
-			Type:        "com_awakari_bluesky_v1",
+			Type:        ceType,
 			Attributes:  make(map[string]*pb.CloudEventAttributeValue),
 			Data:        &pb.CloudEvent_TextData{},
 		}

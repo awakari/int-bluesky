@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -25,6 +26,7 @@ type FeedHandler struct {
 const maxId = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
 const fmtFeedPrefix = "at://%s/app.bsky.feed.generator/"
 const pageSizeDefault = 100
+const loopLimit = 10
 
 func (h FeedHandler) DescribeFeedGenerator(ctx *gin.Context) {
 	q := &interests.Query{
@@ -67,22 +69,27 @@ func (h FeedHandler) Skeleton(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, "invalid feed url")
 	}
 	interestId := strings.TrimPrefix(feedUrl, feedPrefix)
-
 	cursor := ctx.Query("cursor")
+	limitRaw := ctx.Query("limit")
+	limit, err := strconv.Atoi(limitRaw)
+	if err != nil || limit <= 0 {
+		limit = pageSizeDefault
+	}
+
 	var urls []string
-	for len(urls) < pageSizeDefault {
-		urlsNext, cursorNext, err := h.SvcBluesky.Posts(ctx, h.DidPlc, h.Token, interestId, cursor)
+	var urlsNext []string
+	for i := 0; i < loopLimit; i++ {
+		urlsNext, cursor, err = h.SvcBluesky.Posts(ctx, h.DidPlc, h.Token, interestId, cursor, limit-len(urls))
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, "failed to list posts")
 			return
 		}
 		urls = append(urls, urlsNext...)
-		cursor = cursorNext
 		if cursor == "" {
 			break
 		}
 		if len(urlsNext) > 0 {
-			break // return any single result immediately to avoid too many loops
+			break
 		}
 	}
 
