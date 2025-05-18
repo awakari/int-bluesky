@@ -11,6 +11,7 @@ import (
 	"github.com/awakari/int-bluesky/model"
 	"github.com/awakari/int-bluesky/service/converter"
 	"github.com/cloudevents/sdk-go/binding/format/protobuf/v2/pb"
+	"strings"
 )
 
 type Service interface {
@@ -29,6 +30,9 @@ type service struct {
 	didPlc      string
 	token       string
 }
+
+var NoBot = "#nobot"
+var ErrNoBot = errors.New(fmt.Sprintf("text contains the %s tag", NoBot))
 
 func NewService(
 	cfg config.Config,
@@ -84,6 +88,18 @@ func (s service) ConsumePostEvents(ctx context.Context, evts []*pb.CloudEvent) (
 		if dst == nil {
 			continue // may be nil if the source event is not a bluesky post
 		}
+		txtLoCase := strings.ToLower(dst.GetTextData())
+
+		switch {
+		case strings.Contains(txtLoCase, NoBot+" "):
+			fallthrough
+		case strings.Contains(txtLoCase, NoBot+"\n"):
+			fallthrough
+		case strings.HasSuffix(txtLoCase, NoBot):
+			err = errors.Join(err, fmt.Errorf("%s: %w", dst.Attributes[model.CeKeyObjectUrl], ErrNoBot))
+			continue
+		}
+
 		if errPub := s.svcPub.Publish(ctx, dst, s.cfg.Api.GroupId, userId); errPub != nil {
 			err = errors.Join(err, errPub)
 		}
