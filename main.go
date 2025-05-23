@@ -48,7 +48,7 @@ func main() {
 	log.Info("initialized the pub client")
 
 	// init websub reader
-	svcReader := reader.NewService(clientHttp, cfg.Api.Reader.Uri)
+	svcReader := reader.NewService(clientHttp, cfg.Api.Reader.Uri, cfg.Api.Token.Internal)
 	svcReader = reader.NewServiceLogging(svcReader, log)
 	callbackUrl := fmt.Sprintf(
 		"%s://%s:%d%s",
@@ -181,7 +181,7 @@ func main() {
 		}
 	}()
 
-	hc := handler.NewCallbackHandler(cfg.Api.Reader.Uri, cfg.Api.Http.Host, cfg.Api.EventType, svcConv, svcBluesky, didPlc, token)
+	hc := handler.NewCallbackHandler(cfg.Api.Reader.Uri+"/v1", cfg.Api.Http.Host, cfg.Api.EventType, svcConv, svcBluesky, didPlc, token)
 
 	log.Info(fmt.Sprintf("starting to listen the HTTP API @ port #%d...", cfg.Api.Reader.CallBack.Port))
 	internalCallbacks := gin.Default()

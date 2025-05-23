@@ -12,6 +12,7 @@ import (
 	"github.com/awakari/int-bluesky/service/converter"
 	"github.com/cloudevents/sdk-go/binding/format/protobuf/v2/pb"
 	"strings"
+	"time"
 )
 
 type Service interface {
@@ -71,7 +72,7 @@ func (s service) ConsumeInterestEvents(ctx context.Context, evts []*pb.CloudEven
 		}
 		publicAttr, publicAttrPresent := evt.Attributes[model.CeKeyPublic]
 		if publicAttrPresent && publicAttr.GetCeBoolean() {
-			_ = s.svcReader.CreateCallback(ctx, interestId, s.callbackUrl)
+			_ = s.svcReader.Subscribe(ctx, interestId, model.GroupIdDefault, model.UserIdDefault, s.callbackUrl, 1*time.Minute)
 			_ = s.svcBluesky.CreateFeed(ctx, s.didWeb, s.didPlc, s.token, interestId)
 		}
 	}

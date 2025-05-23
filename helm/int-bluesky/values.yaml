@@ -122,7 +122,7 @@ api:
     timeout: "10s"
     uri: "http://pub:8080/v1"
   reader:
-    uri: "http://reader:8080/v1"
+    uri: "http://reader:8080"
     uriEvtBase: "https://awakari.com/pub-msg.html?id="
     callback:
       protocol: "http"
