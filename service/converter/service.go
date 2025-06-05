@@ -122,10 +122,10 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 	post.Text = html.UnescapeString(s.htmlStripTags.Sanitize(post.Text))
 	post.Text = reMultiSpace.ReplaceAllString(post.Text, " ")
 	post.Text = util.TruncateStringUtf8(post.Text, s.fmtLenMaxBodyTxt)
-	post.Text += "\n\n| Details | Interest | Feed |"
+	post.Text += "\n\nInterest | Match | Feed"
 
-	startResultDetails := strings.LastIndex(post.Text, "Details")
-	startInterest := strings.Index(post.Text, "Interest")
+	startInterest := strings.LastIndex(post.Text, "Interest")
+	startResultDetails := strings.LastIndex(post.Text, "Match")
 	startFeed := strings.LastIndex(post.Text, "Feed")
 
 	post.Facets = append(post.Facets,
@@ -137,7 +137,7 @@ func (s service) EventToPost(ctx context.Context, evt *pb.CloudEvent, interestId
 			}},
 			Index: &bsky.RichtextFacet_ByteSlice{
 				ByteStart: int64(startResultDetails),
-				ByteEnd:   int64(startResultDetails + len("Details")),
+				ByteEnd:   int64(startResultDetails + len("Match")),
 			},
 		},
 		&bsky.RichtextFacet{
