@@ -3,7 +3,7 @@ module github.com/awakari/int-bluesky
 go 1.24
 
 require (
-	github.com/bluesky-social/indigo v0.0.0-20250605010711-db9bb60025dc
+	github.com/bluesky-social/indigo v0.0.0-20250609112051-fa0e9d0066c1
 	github.com/bytedance/sonic v1.13.3
 	github.com/cloudevents/sdk-go/binding/format/protobuf/v2 v2.15.2
 	github.com/cloudevents/sdk-go/v2 v2.16.0
@@ -93,8 +93,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/arch v0.18.0 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/net v0.40.0 // indirect
+	golang.org/x/crypto v0.39.0 // indirect
+	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
